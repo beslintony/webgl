@@ -1,0 +1,201 @@
+<!DOCTYPE <!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>WebGL Clock Demo</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        #canvas {
+            background: #fff url(./assets/clock.svg) no-repeat center;
+            background-size: 80%;
+            height: 25%;
+            position: relative;
+            padding-top: 10%;
+            padding-bottom: 10%;
+            width: 25%;
+        }
+    </style>
+</head>
+
+<body onload="main();">
+    <canvas id=canvas width='640' height='480'>
+        Sorry! Your Browser doesn't support WebGL
+    </canvas>
+</body>
+
+</html>
+<script>
+
+    const vsSource = `
+    attribute vec3 a_position;
+    uniform vec2 u_rotation;
+
+    void main() {
+        vec2 rotatedPosition = vec2(
+            a_position.x * u_rotation.y + a_position.y * u_rotation.x,
+            a_position.y * u_rotation.y - a_position.x * u_rotation.x
+            );
+
+            gl_Position = vec4(rotatedPosition, 0.0, 1.0);
+    }
+    `;
+
+    const fsSource = `
+    precision mediump float;
+    uniform vec4 u_color;
+    void main() {
+        gl_FragColor = u_color;
+    }
+    `;
+
+    function main() {
+        const canvas = document.getElementById('canvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+
+        const minuteHandVertices = new Float32Array([
+            0.622, 0, 0.58, -0.011, 0.58, 0.011, //Triangle 0
+            0.58, 0.009, 0.58, -0.009, 0, -0.009, // Triangle 1
+            0, -0.009, 0, 0.009, 0.58, 0.009 // Triangle 2 
+        ]);
+
+
+        const secondHandVertices = new Float32Array([
+            0, 0.65, -0.006, 0.6, 0.006, 0.6, //Triangle 0
+            0.004, 0.6, -0.004, 0.6, -0.004, 0, // Triangle 1
+            -0.004, 0, 0.004, 0, 0.004, 0.6 // Triangle 2 
+        ]);
+
+        const black = [0, 0, 0, 1];
+        const red = [1, 0, 0, 1];
+
+        rotation = [0, 1];
+        oldTime = 0.0;
+        degreesPerSecond = 6.0;
+        angleInDegrees = 0.0;
+
+        render();
+
+        function render() {
+            //calling functions
+            setScene(gl);
+            initLoader(gl, minuteHandVertices, black);
+            initLoader(gl, secondHandVertices, red);
+
+            function update(now) {
+                //updating the angle and time
+                const angleInRadians = angleInDegrees * Math.PI / 180.0;
+                console.log(angleInRadians);
+                rotation[0] = Math.sin(angleInRadians);
+                rotation[1] = Math.cos(angleInRadians);
+                let delta = ((now - oldTime) / 1000.0) * degreesPerSecond;
+                angleInDegrees = (angleInDegrees + delta) % 360;
+                oldTime = now;
+                render();
+            }
+            window.requestAnimationFrame(update);
+        }
+    }
+
+
+    function initLoader(gl, vertices, color) {
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+        if (!initShaderProgram(gl, vsSource, fsSource)) {
+            console.log('Failed to intialize shaders.');
+            return null;
+        }
+
+        program = initShaderProgram(gl, vsSource, fsSource);
+
+        const rotate = gl.getUniformLocation(program, `u_rotation`);
+        if (!rotate) {
+            console.log('Current rotation data is not found!');
+            return null;
+        }
+        gl.uniform2fv(rotate, rotation); //updating rotation vec
+
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+
+        const positionLocation = gl.getAttribLocation(program, `a_position`);
+        //enabling a_position
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const u_color = gl.getUniformLocation(program, `u_color`);
+        if (!u_color) {
+            console.log('Color is misssing!');
+            return null;
+        }
+        gl.uniform4fv(u_color, color); //updating color vec
+
+        gl.drawArrays(gl.TRIANGLES, 0, 9);  // drawing triangles 
+
+        //disposing residues..
+        gl.disableVertexAttribArray(positionLocation);
+        gl.deleteBuffer(buffer);
+        gl.deleteProgram(program);
+
+    }
+
+    function setScene(gl) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.0, 0.0, 0.0, 0.0);
+        gl.clearDepth(1.0);
+        gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    }
+
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        //checking for shaderprogram link status
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return null;
+        }
+
+        gl.useProgram(shaderProgram);
+        gl.program = shaderProgram;
+
+        return shaderProgram;
+    }
+
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        // Send the source to the shader object
+        gl.shaderSource(shader, source);
+        // Compile the shader program
+        gl.compileShader(shader);
+        //checking for shaderprogram compile status
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+</script>
