@@ -1,1 +1,203 @@
+<html>
+    <head>
+        <title>WebGL Clock Demo</title>
+        <style>
+            body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                padding-top: 10%;
+                padding-bottom: 15%;
+                overflow: hidden;
+        }
+            .clock {
+                background: #fff url(./assets/clock.svg) no-repeat top;
+                background-size: 96%;
+                height: 21em;
+                padding-bottom: 22%;
+                position: relative;
+                width: 21em;
+        }
+        </style>
+    </head>
+    <body onload= "main();">
+        <canvas id= "canvas" class="clock" width ='640' height ='480' >
+            Sorry! Your Browser doesn't support WebGL
+        </canvas>
+    </body>
+</html>
 
+
+<script>
+const vsSource = `
+attribute vec3 position;
+uniform mat4 pMatrix;
+uniform mat4 vMatrix;
+uniform mat4 mMatrix;
+
+void main() {
+    gl_Position = pMatrix*vMatrix*mMatrix*vec4(position,1);
+}
+`;
+
+const fsSource = `
+precision mediump float;
+uniform vec4 fragColor;
+void main() {
+    gl_FragColor = fragColor;
+}
+`;
+
+function main(){
+    const canvas = document.querySelector('canvas');
+    const gl = canvas.getContext('webgl');
+    
+    if(!gl){
+        throw new Error ('WebGL not supported');
+    }
+    //vertices Minute's Hand
+    const minuteHandVertices = new Float32Array([
+        0.622,0, 0.58,-0.011, 0.58,0.011, //Triangle 0
+        0.58,0.009, 0.58,-0.009, 0,-0.009, // Triangle 1
+        0,-0.009, 0,0.009, 0.58,0.009 // Triangle 2 
+    ]); 
+
+    //vertices Second's Hand
+    const secondHandVertices = new Float32Array([
+        0,0.65, -0.006,0.6, 0.006,0.6, //Triangle 0
+        0.004,0.6, -0.004,0.6, -0.004,0, // Triangle 1
+        -0.004,0, 0.004,0, 0.004,0.6 // Triangle 2 
+    ]);
+    //storing user color for fragment shader
+    const black = [0,0,0,1];
+    const red = [1,0,0,1];
+    let speed = 0.000100;
+    //render and draw the objects
+    let then = 0;
+    let render = function(now) {
+        let delta = now-then;
+        rotateZ(mo_matrix, delta*speed);    
+        then = now;
+
+        setScene(gl);
+
+        initLoader(gl, minuteHandVertices, black);
+
+        initLoader(gl, secondHandVertices, red);
+
+        window.requestAnimationFrame(render);
+    }
+    render(0);
+}
+
+function initLoader(gl, vertices, color){
+    //creating buffer
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    //checking vertex shader and fragment shader
+    if (!initShaderProgram(gl, vsSource, fsSource)) {
+        console.log('Failed to intialize shaders.');
+        return;
+    }
+    //storing Shaderprogram value to program
+    program = initShaderProgram(gl, vsSource, fsSource);
+    //uniform location for matrices and position from vertex shader
+    const pMatrix = gl.getUniformLocation(program, `pMatrix`);
+    const vMatrix = gl.getUniformLocation(program, `vMatrix`);
+    const mMatrix = gl.getUniformLocation(program, `mMatrix`);
+
+    gl.uniformMatrix4fv(pMatrix, false, proj_matrix);
+    gl.uniformMatrix4fv(vMatrix, false, view_matrix);
+    gl.uniformMatrix4fv(mMatrix, false, mo_matrix);
+
+    const positionLocation = gl.getAttribLocation(program, `position`);
+    // enabling vertexattributearray for position
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+    //checking and getting user color from and to fragment shader
+    const fragColor = gl.getUniformLocation(program, `fragColor`);
+        if (!fragColor) {
+            console.log('Failed to get the storage location of fragColor');
+            return;
+        }
+    gl.uniform4fv(fragColor, color);
+    //draw the traingle elements with first = 0, count = 9(vertices.length/2)
+    gl.drawArrays(gl.TRIANGLES, 0, 9);
+    
+}
+//setting up canvas for the Drawing of elements
+function setScene(gl) {
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clearDepth(1.0);
+    gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+}
+//initialing shader program 
+function initShaderProgram(gl, vsSource, fsSource) {
+    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    // Create the shader program
+    const shaderProgram = gl.createProgram();
+    // attaching the shaders and linking 
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+    //checking the link status of the program
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+    alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+    return;
+    }
+
+    gl.useProgram(shaderProgram);
+    gl.program = shaderProgram;
+
+    return shaderProgram;
+}
+//creating  and comping shader
+function loadShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    //checking the compile status
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);//deleting the shader
+      return;
+    }
+    return shader;
+  }
+  //seting up projection matrix
+  function get_projection(angle, a, zMin, zMax) {
+    const ang = Math.tan((angle*.5)*Math.PI/180);//angle*.5
+    return [
+       0.7/ang, 0 , 0, 0,
+       0, 0.7*a/ang, 0, 0,
+       0, 0, -(zMax+zMin)/(zMax-zMin), -1,
+       0, 0, (-2*zMax*zMin)/(zMax-zMin), 0
+    ];
+ }
+
+const proj_matrix = get_projection(40, canvas.width/canvas.height, 1, 100);//new projection Matrix
+const mo_matrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; //identity matrix for model matrix
+const view_matrix = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]; //identity matrix for view matrix
+//translating z
+view_matrix[14] = view_matrix[14]-2; 
+//rotate along z axis and updating values
+function rotateZ(m, angle) {
+    const c = Math.cos(-angle);
+    const s = Math.sin(-angle);
+    const mv0 = m[0], mv4 = m[4], mv8 = m[8]; 
+
+    m[0] = c*m[0]-s*m[1];
+    m[4] = c*m[4]-s*m[5];
+    m[8] = c*m[8]-s*m[9];
+    m[1] = c*m[1]+s*mv0;
+    m[5] = c*m[5]+s*mv4;
+    m[9] = c*m[9]+s*mv8;
+ }
+
+</script>
