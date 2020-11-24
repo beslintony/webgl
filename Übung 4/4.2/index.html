@@ -1,0 +1,254 @@
+<!DOCTYPE <!DOCTYPE html>
+<html>
+    <head>
+        <title>WebGL Clock</title>
+        <script src="./assets/x3dom.js"></script>
+        <style>
+            body {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                min-height: 100vh;
+                padding-top: 10%;
+                overflow: hidden;
+        }
+            #canvas {
+                background: #fff url(./assets/clock.svg) no-repeat top;
+                background-size: 96%;
+                height: 31em;
+                width: 31em;
+                padding-bottom:25%;
+                position: relative;
+        }
+        </style>
+    </head>
+    <body onload= "main();">
+        <canvas id= "canvas" width ='640' height ='480'>
+            Sorry! Your Browser doesn't support WebGL
+        </canvas>
+    </body>
+</html>
+
+
+<script>
+const vsSource = `
+attribute vec3 position;
+uniform mat4 tMatrix;
+
+void main() {
+    gl_Position = tMatrix*vec4(position,1);
+}
+`;
+
+const fsSource = `
+precision mediump float;
+uniform vec4 fragColor;
+void main() {
+    gl_FragColor = fragColor;
+}
+`;
+const angle_step = -6;
+const translation = new VecMath.SFVec3f(0,0,-1.2);
+
+function main(){
+    const canvas = document.querySelector('canvas');
+    const gl = canvas.getContext('webgl');
+    
+    if(!gl){
+        throw new Error ('WebGL not supported');
+    }
+    //vertices Minute's Hand
+    const hourHandVertices = new Float32Array([
+        0,0.520,
+        -0.016,0.48,
+        0.016,0.48, //Triangle 0
+        0.014,0.48,
+        -0.014,0.48, 
+        -0.014,0, // Triangle 1
+        -0.014,0, 
+        0.014,0, 
+        0.014,0.48, // Triangle 2 
+    ]); 
+
+    //vertices Minute's Hand
+    const minuteHandVertices = new Float32Array([
+        0,0.566,
+        -0.011,0.52,
+        0.011,0.52, //Triangle 0
+        0.009,0.52,
+        -0.009,0.52, 
+        -0.009,0, // Triangle 1
+        -0.009,0, 
+        0.009,0, 
+        0.009,0.52, // Triangle 2 
+    ]); 
+
+    //vertices Second's Hand
+    const secondHandVertices = new Float32Array([
+        0,0.65, 
+        -0.006,0.6, 
+        0.006,0.6, //Triangle 0
+        0.004,0.6, 
+        -0.004,0.6, 
+        -0.004,0, // Triangle 1
+        -0.004,0, 
+        0.004,0, 
+        0.004,0.6, // Triangle 2 
+    ]);
+    //storing user color for fragment shader
+    const black = [0,0,0,1];
+    const red = [1,0,0,1];
+    const rand = [Math.random(),Math.random(),Math.random(),1];
+
+    //render and draw the objects
+    function render() {
+
+        const d = new Date();
+        let angle_time ={};
+
+        function animate() {
+            // Calculate the cuurent time
+            let seconds = d.getSeconds();
+            //console.log('seconds : ',seconds);
+            let minutes = d.getMinutes();
+            //console.log('minutes : ',minutes);
+            let hours = d.getHours();
+            //console.log('hours : ',hours);
+        
+            // Update the rotation angle with the current time
+            
+            let angle_seconds = (seconds * angle_step) * Math.PI / 180;
+            let angle_minutes = (minutes * angle_step) * Math.PI / 180;
+            let angle_hours = ((hours * angle_step * 5) + (minutes * angle_step /12)) * Math.PI / 180;//since not base60
+            // console.log('minuted : ',angle_minutes );
+            // console.log('angle_hours : ',angle_hours );
+            angle_time = {
+                sec: angle_seconds,
+                min: angle_minutes,
+                hrs: angle_hours,
+            };
+            setScene(gl);
+            initLoader(gl, angle_time.hrs, hourHandVertices, rand);
+            initLoader(gl, angle_time.min, minuteHandVertices, black);
+            initLoader(gl, angle_time.sec, secondHandVertices, red);
+            render();
+        }
+        window.requestAnimationFrame(animate);
+    }keylistener();
+    render();
+}
+
+function keylistener(){
+    canvas.setAttribute("tabindex", "0");
+    console.log('message1');
+    canvas.addEventListener('keypress', (evt)=> {
+        console.log('message2');
+        switch (evt.charCode) {
+            case 43: translation.z = translation.z + 0.05;/* + */ break;
+            case 45: translation.z = translation.z - 0.05;/* - */ break;
+            }
+    }, true);
+
+    canvas.addEventListener('keydown', (evt)=> {
+    console.log('message');
+        switch (evt.keyCode) {
+            case 37: translation.x = translation.x - 0.05; break;
+            case 38: translation.y = translation.y + 0.05; break;
+            case 39: translation.x = translation.x + 0.05; break;
+            case 40: translation.y = translation.y - 0.05; break;
+        }
+        }, true);
+    }
+
+function initLoader(gl, current_angle, vertices, color){
+    //creating buffer
+    const buffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    //checking vertex shader and fragment shader
+    if (!initShaderProgram(gl, vsSource, fsSource)) {
+        console.log('Failed to intialize shaders.');
+        return;
+    }
+    //storing Shaderprogram value to program
+    program = initShaderProgram(gl, vsSource, fsSource);
+    //uniform location for matrices and position from vertex shader
+    const tMatrix = gl.getUniformLocation(program, `tMatrix`);
+    
+    //updating the transformation matrix
+    const t_matrix = new VecMath.SFMatrix4f.rotationZ(current_angle);
+    const viewMatrix = new VecMath.SFMatrix4f.identity();
+
+    viewMatrix.setTranslate(translation);
+
+    const projectionMatrix = new VecMath.SFMatrix4f.perspective(75*Math.PI/180,canvas.width/canvas.height,0.1, 1000);
+    const modelview = viewMatrix.mult(t_matrix);
+    const modelviewProjection = projectionMatrix.mult(modelview);
+
+    gl.uniformMatrix4fv(tMatrix, false, new Float32Array(modelviewProjection.toGL()));
+
+    const positionLocation = gl.getAttribLocation(program, `position`);
+    // enabling vertexattributearray for position
+    gl.enableVertexAttribArray(positionLocation);
+    gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+    //checking and getting user color from and to fragment shader
+    const fragColor = gl.getUniformLocation(program, `fragColor`);
+        if (!fragColor) {
+            console.log('Failed to get the storage location of fragColor');
+            return;
+        }
+    gl.uniform4fv(fragColor, color);
+    //draw the traingle elements with first = 0, count = 9(vertices.length/2)
+    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 2);
+    //deleting the residues..
+    gl.disableVertexAttribArray(positionLocation);
+    gl.deleteBuffer(buffer);
+    gl.deleteProgram(program);
+    
+}
+
+//setting up canvas for the Drawing of elements
+function setScene(gl) {
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    gl.clearColor(0.0, 0.0, 0.0, 0.0);
+    gl.clearDepth(1.0);
+    gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+}
+//initialing shader program 
+function initShaderProgram(gl, vsSource, fsSource) {
+    const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+    const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+    // Create the shader program
+    const shaderProgram = gl.createProgram();
+    // attaching the shaders and linking 
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+    //checking the link status of the program
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+    alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+    return;
+    }
+
+    gl.useProgram(shaderProgram);
+    gl.program = shaderProgram;
+
+    return shaderProgram;
+}
+
+//creating  and compiling shader
+function loadShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    //checking the compile status
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);//deleting the shader
+      return;
+    }
+    return shader;
+  }
+</script>

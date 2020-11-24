@@ -1,0 +1,214 @@
+<!DOCTYPE <!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>WebGL House with Texture Demo</title>
+</head>
+
+<body onload="main();">
+    <canvas id='canvas' width='640' height='480'>
+        Sorry! Your Browser doesn't support WebGL
+    </canvas>
+</body>
+
+</html>
+
+<script>
+    const vsSource = `
+    precision mediump float;
+    attribute vec3 a_position;
+    attribute vec2 a_texcoord;
+    varying vec2 v_texcoord;
+    void main() {
+        gl_Position = vec4(a_position, 1);
+        v_texcoord = a_texcoord;
+    }
+    `;
+
+    const fsSource = `
+    precision mediump float;
+    varying vec2 v_texcoord;
+    uniform sampler2D u_texture;
+    void main() {
+        gl_FragColor = texture2D(u_texture, v_texcoord);
+    }
+    `;
+    let info = {};
+    const textureVertices = new Float32Array([
+        0, 1,
+        1, 1,
+        1, 0,
+        0, 1,
+        1, 1,
+        1, 0,
+        0, 1,
+        1, 0,
+        0, 0,
+    ]);
+    const houseVertices = new Float32Array([
+        -0.55, 0.3,
+        0, 0.8,
+        0.55, 0.3, //Triangle 0
+        -0.5, 0.3,
+        0.5, 0.3,
+        0.5, -0.5, // Triangle 1
+        -0.5, 0.3,
+        0.5, -0.5,
+        -0.5, -0.5, // Triangle 2 
+    ]);
+
+    const bild = './texture/tex.png';
+
+    function main() {
+        const canvas = document.getElementById(`canvas`);
+        const gl = canvas.getContext(`webgl`);
+
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+
+        initLoader(gl, houseVertices, textureVertices);
+        initTexture(gl);
+
+    }
+
+    function setScene(gl) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.44, 0.56, 0.24, 1.0);
+        gl.clearDepth(1.0);
+        gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+    }
+
+    function initLoader(gl, vertices, tex_vertices) {
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+        const shaderProgram = initShaderProgram(gl, vsSource, fsSource);
+
+        if (!shaderProgram) {
+            console.log('Failed to intialize shaders.');
+            return null;
+        }
+
+        const textureBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(tex_vertices), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+
+        const positionLocation = gl.getAttribLocation(shaderProgram, `a_position`);
+        //enabling a_position
+        gl.enableVertexAttribArray(positionLocation);
+        gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const texcoordLocation = gl.getAttribLocation(shaderProgram, `a_texcoord`);
+        //enabling a_position
+        gl.enableVertexAttribArray(texcoordLocation);
+        gl.bindBuffer(gl.ARRAY_BUFFER, textureBuffer);
+        gl.vertexAttribPointer(texcoordLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const u_texture = gl.getUniformLocation(shaderProgram, `u_texture`);
+        if (!u_texture) {
+            console.log('Failed to get the storage location of u_texture');
+            return false;
+        }
+        
+        info = {
+            v_length: vertices.length,
+            texture: u_texture,
+        };
+
+    }
+
+    function initTexture(gl) {
+        const texture = gl.createTexture();
+        if (!texture) {
+            console.log('Failed to create the texture object');
+            return false;
+        }
+        const image = new Image(); // new image obj
+        if (!image) {
+            console.log('Failed to create the image object');
+            return false;
+        }
+        //load the image texture
+        image.onload = e => {
+            loadTexture(gl, texture, info.texture, image);
+        };
+        // Tell the browser to load an image
+        image.src = bild;
+    }
+
+    function loadTexture(gl, tex, u_tex, img) {
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1); // Flip the image's y axis
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+
+        // Set the texture parameters
+        if (isPowerOf2(img.width) && isPowerOf2(img.height)) {
+            // power of 2, Generate mipmap
+            gl.generateMipmap(gl.TEXTURE_2D);
+        } else {
+            // not a power of 2, clamp to edge
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        }
+        // set the texture image
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+
+        // texture sampler set to 0
+        gl.uniform1i(u_tex, 0); 
+
+        setScene(gl);//claering canvas before drawing
+        gl.drawArrays(gl.TRIANGLES, 0, info.v_length / 2);
+    }
+
+    function isPowerOf2(value) {
+        return (value & (value - 1)) === 0;
+    }
+
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+
+        //checking for shaderprogram link status
+
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return null;
+        }
+
+        gl.useProgram(shaderProgram);
+        gl.program = shaderProgram;
+
+        return shaderProgram;
+    }
+
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        // Send the source to the shader object
+        gl.shaderSource(shader, source);
+        // Compile the shader program
+        gl.compileShader(shader);
+        //checking for shaderprogram compile status
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader);
+            return null;
+        }
+        return shader;
+    }
+</script>
