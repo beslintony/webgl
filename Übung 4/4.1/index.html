@@ -67,7 +67,6 @@
         if (!gl) {
             throw new Error('WebGL not supported');
         }
-
         initLoader(gl, houseVertices, textureVertices);
         initTexture(gl);
 
@@ -149,22 +148,25 @@
         gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, 1); // Flip the image's y axis
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, tex);
+        // set the texture image
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
+        // texture sampler set to 0
+        gl.uniform1i(u_tex, 0); 
 
         // Set the texture parameters
         if (isPowerOf2(img.width) && isPowerOf2(img.height)) {
             // power of 2, Generate mipmap
+            
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_NEAREST);
             gl.generateMipmap(gl.TEXTURE_2D);
-        } else {
+        
+            } else {
             // not a power of 2, clamp to edge
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
             gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         }
-        // set the texture image
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, img);
-
-        // texture sampler set to 0
-        gl.uniform1i(u_tex, 0); 
 
         setScene(gl);//claering canvas before drawing
         gl.drawArrays(gl.TRIANGLES, 0, info.v_length / 2);
