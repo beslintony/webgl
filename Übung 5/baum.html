@@ -1,0 +1,277 @@
+
+<!DOCTYPE <!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebGL</title>
+    <script src="./assets/gl-matrix.js"></script>
+</head>
+
+<body onload="main();">
+
+    <canvas id="canvas" width='640' height='480'>
+        Sorry! Your Browser doesn't support WebGL
+    </canvas>
+</body>
+
+</html>
+
+
+<script>
+    const vsSource = `
+attribute vec3 vertPosition;
+uniform mat4 uModelViewMatrix;
+
+
+void main() {
+    gl_Position = uModelViewMatrix * vec4(vertPosition, 1.0);
+}
+`;
+
+    const fsSource = `
+precision mediump float;
+uniform vec3 fragColor;
+void main()
+{
+  gl_FragColor = vec4(fragColor, 1.0);
+}
+`;
+
+    const boxVertices = [
+        // Top
+        -0.25, 0.25, -0.25,
+        -0.25, 0.25, 0.25,
+        0.25, 0.25, 0.25,
+        0.25, 0.25, -0.25,
+
+        // Left
+        -0.25, 0.25, 0.25,
+        -0.25, -0.25, 0.25,
+        -0.25, -0.25, -0.25,
+        -0.25, 0.25, -0.25,
+
+        // Right
+        0.25, 0.25, 0.25,
+        0.25, -0.25, 0.25,
+        0.25, -0.25, -0.25,
+        0.25, 0.25, -0.25,
+
+        // Front
+        0.25, 0.25, 0.25,
+        0.25, -0.25, 0.25,
+        -0.25, -0.25, 0.25,
+        -0.25, 0.25, 0.25,
+
+        // Back
+        0.25, 0.25, -0.25,
+        0.25, -0.25, -0.25,
+        -0.25, -0.25, -0.25,
+        -0.25, 0.25, -0.25,
+
+        // Bottom
+        -0.25, -0.25, -0.25,
+        -0.25, -0.25, 0.25,
+        0.25, -0.25, 0.25,
+        0.25, -0.25, -0.25,
+
+    ];
+
+    const boxIndices = [
+        0, 1, 2, 0, 2, 3,
+        5, 4, 6, 6, 4, 7,
+        8, 9, 10, 8, 10, 11,
+        13, 12, 14, 15, 14, 12,
+        16, 17, 18, 16, 18, 19,
+        21, 20, 22, 22, 20, 23
+    ];
+    let ui = {
+        dragging: false,
+        mouse: {
+            lastX: -1,
+            lastY: -1,
+        }
+    };
+    let app = {
+        angle: {
+            x: 0,
+            y: 0,
+        }
+    };
+
+    function main() {
+        const canvas = document.querySelector('canvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+        let time_old = 0;
+
+        let animate = function (time) {
+            const dt = time - time_old;
+            setScene(gl);
+            initLoader(gl, boxVertices, boxIndices, 1);
+            initLoader(gl, boxVertices, boxIndices, 2);
+            initLoader(gl, boxVertices, boxIndices, 3);
+            initLoader(gl, boxVertices, boxIndices, 4);
+            time_old = time;
+            mouseHover();
+            window.requestAnimationFrame(animate);
+        }
+        animate(0);
+    }
+
+    function mouseHover() {
+        canvas.addEventListener('mousedown', (event) => {
+            console.log('mousedown');
+            let x = event.clientX;
+            let y = event.clientY;
+            let rect = event.target.getBoundingClientRect();
+            if (rect.left <= x && x < rect.right && rect.top <= y && y < rect.bottom) {
+                ui.mouse.lastX = x;
+                ui.mouse.lastY = y;
+                ui.dragging = true;
+            }
+        }, false);
+        canvas.addEventListener('mouseup', (event) => {
+            console.log('mouseup');
+            ui.dragging = false;
+        }, false);
+        canvas.addEventListener('mousemove', (event) => {
+            console.log('mousemove');
+            let x = event.clientX;
+            let y = event.clientY;
+            if (ui.dragging) {
+                // rotationfactor
+                let factor = 5 / canvas.height;
+                let dx = factor * (x - ui.mouse.lastX);
+                let dy = factor * (y - ui.mouse.lastY);
+                // update the angle
+                app.angle.x = app.angle.x + dy;
+                app.angle.y = app.angle.y + dx;
+            }
+            // update mouse position
+            ui.mouse.lastX = x;
+            ui.mouse.lastY = y;
+        }, false);
+
+    }
+
+    function initLoader(gl, vertices, indices, id) {
+        //creating buffer
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        const boxIndexBufferObject = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, boxIndexBufferObject);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+        //checking vertex shader and fragment shader
+        if (!initShaderProgram(gl, vsSource, fsSource)) {
+            console.log('Failed to intialize shaders.');
+            return;
+        }
+        //storing Shaderprogram value to program
+        program = initShaderProgram(gl, vsSource, fsSource);
+
+        const positionLocation = gl.getAttribLocation(program, `vertPosition`);
+        gl.vertexAttribPointer(positionLocation, 3, gl.FLOAT, gl.FALSE, 3 * Float32Array.BYTES_PER_ELEMENT, 0);
+
+        gl.enableVertexAttribArray(positionLocation);
+        const fragColor = gl.getUniformLocation(program, `fragColor`);
+        if (!fragColor) {
+            console.log('Color is misssing!');
+            return null;
+        }
+
+        let modelViewMatrix = mat4.create();
+        let pm = mat4.create();
+        let mvp = mat4.create();
+        mat4.perspective(pm,
+            75, canvas.width / canvas.height, 1, 100
+        );
+
+        mat4.rotateX(mvp, mvp, app.angle.x);
+        mat4.rotateY(mvp, mvp, app.angle.y);
+        mat4.copy(modelViewMatrix, pm);
+        mat4.scale(modelViewMatrix, mvp, [-0.25, 1, 0.25]); //(1 x 0.25, 4x 0.25, 1 x 0.25) 
+
+        if (id == 1) {
+            mat4.translate(mvp, mvp, vec3.fromValues(0, 0.1, 0));
+            gl.uniform3fv(fragColor, [0.15, 0.45, 0.45]);
+        } else if (id == 2) {
+            mat4.translate(mvp, mvp, vec3.fromValues(-.12, 0.4, 0));
+            mat4.rotateX(mvp, mvp, 60);
+            mat4.rotateZ(mvp, mvp, 12);
+            gl.uniform3fv(fragColor, [0.15, 0.45, 0.45]);
+        } else if (id == 3) {
+            mat4.translate(mvp, mvp, vec3.fromValues(0.1, 0.4, 0));
+            mat4.rotateX(mvp, mvp, 60);
+            mat4.rotateY(mvp, mvp, 120);
+            mat4.rotateZ(mvp, mvp, 120);
+            gl.uniform3fv(fragColor, [0.15, 0.45, 0.45]);
+        } else if (id == 4) {
+            mat4.translate(mvp, mvp, vec3.fromValues(0.01, 0.49, 0));
+            mat4.rotateX(mvp, mvp, 60);
+            mat4.rotateY(mvp, mvp, 120);
+            gl.uniform3fv(fragColor, [0.15, 0.45, 0.45]);
+        }
+
+        mat4.multiply(mvp, mvp, modelViewMatrix);
+        const mvMatrix = gl.getUniformLocation(program, `uModelViewMatrix`);
+
+        gl.uniformMatrix4fv(mvMatrix, false, mvp);
+
+        gl.drawElements(gl.TRIANGLES, boxIndices.length, gl.UNSIGNED_SHORT, 0);
+        //deleting the residues..
+        gl.disableVertexAttribArray(positionLocation);
+        gl.deleteBuffer(buffer);
+        gl.deleteProgram(program);
+
+    }
+
+    //setting up canvas for the Drawing of elements
+    function setScene(gl) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
+    //initialing shader program 
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+        // attaching the shaders and linking 
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        //checking the link status of the program
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return;
+        }
+
+        gl.useProgram(shaderProgram);
+        gl.program = shaderProgram;
+
+        return shaderProgram;
+    }
+
+    //creating  and compiling shader
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        //checking the compile status
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader); //deleting the shader
+            return;
+        }
+        return shader;
+    }
+</script>

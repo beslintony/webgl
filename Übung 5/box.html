@@ -1,0 +1,230 @@
+
+<!DOCTYPE <!DOCTYPE html>
+<html>
+
+<head>
+    <title>WebGL</title>
+    <script src="./assets/gl-matrix.js"></script>
+</head>
+
+<body onload="main();">
+    <canvas id="canvas" width='640' height='480'>
+        Sorry! Your Browser doesn't support WebGL
+    </canvas>
+</body>
+
+</html>
+
+
+<script>
+    const vsSource = `
+attribute vec3 vertPosition;
+attribute vec3 vertColor;
+varying vec3 fragColor;
+uniform mat4 uModelViewMatrix;
+uniform mat4 uProjectionMatrix;
+
+void main() {
+    fragColor = vertColor;
+    gl_Position = uProjectionMatrix * uModelViewMatrix * vec4(vertPosition, 1.0);
+}
+`;
+
+    const fsSource = `
+precision mediump float;
+varying vec3 fragColor;
+void main()
+{
+  gl_FragColor = vec4(fragColor, 1.0);
+}
+`;
+
+    let rotation = 1.0;
+
+    const boxVertices = [ // Top
+        -1.0, 1.0, -1.0, 0.91, 0.10, 0.0,
+        -1.0, 1.0, 1.0, 0.91, 0.0, 0.0,
+        1.0, 1.0, 1.0, 0.91, 0.0, 0.0,
+        1.0, 1.0, -1.0, 0.91, 0.0, 0.0,
+
+        // Left
+        -1.0, 1.0, 1.0, 0.90, 0.0, 0.5,
+        -1.0, -1.0, 1.0, 0.90, 0.0, 0.5,
+        -1.0, -1.0, -1.0, 0.90, 0.0, 0.5,
+        -1.0, 1.0, -1.0, 0.90, 0.0, 0.5,
+
+        // Right
+        1.0, 1.0, 1.0, 0.10, 0.60, 0.75,
+        1.0, -1.0, 1.0, 0.10, 0.60, 0.75,
+        1.0, -1.0, -1.0, 0.10, 0.60, 0.75,
+        1.0, 1.0, -1.0, 0.10, 0.60, 0.75,
+
+        // Front
+        1.0, 1.0, 1.0, 0.30, 0.10, 0.15,
+        1.0, -1.0, 1.0, 0.30, 0.10, 0.15,
+        -1.0, -1.0, 1.0, 0.30, 0.10, 0.15,
+        -1.0, 1.0, 1.0, 0.30, 0.10, 0.15,
+
+        // Back
+        1.0, 1.0, -1.0, 0.40, 1.0, 0.15,
+        1.0, -1.0, -1.0, 0.40, 1.0, 0.15,
+        -1.0, -1.0, -1.0, 0.40, 1.0, 0.15,
+        -1.0, 1.0, -1.0, 0.40, 1.0, 0.15,
+
+        // Bottom
+        -1.0, -1.0, -1.0, 0.40, 0.5, 1.0,
+        -1.0, -1.0, 1.0, 0.40, 0.5, 1.0,
+        1.0, -1.0, 1.0, 0.40, 0.5, 1.0,
+        1.0, -1.0, -1.0, 0.40, 0.5, 1.0,
+    ];
+
+    const boxIndices = [
+        0, 1, 2, 0, 2, 3,
+        5, 4, 6, 6, 4, 7,
+        8, 9, 10, 8, 10, 11,
+        13, 12, 14, 15, 14, 12,
+        16, 17, 18, 16, 18, 19,
+        21, 20, 22, 22, 20, 23
+    ];
+
+    function main() {
+        const canvas = document.querySelector('canvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+        let then = 0;
+
+        // Draw the scene repeatedly
+        function render(now) {
+            now *= 0.001; // convert to seconds
+            const deltaTime = now - then;
+            then = now;
+
+            setScene(gl);
+            initLoader(gl, boxVertices, boxIndices);
+            rotation += deltaTime;
+
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    }
+
+
+    function initLoader(gl, vertices, indices) {
+        //creating buffer
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+        const boxIndexBufferObject = gl.createBuffer();
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, boxIndexBufferObject);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(indices), gl.STATIC_DRAW);
+
+        //checking vertex shader and fragment shader
+        if (!initShaderProgram(gl, vsSource, fsSource)) {
+            console.log('Failed to intialize shaders.');
+            return;
+        }
+        //storing Shaderprogram value to program
+        program = initShaderProgram(gl, vsSource, fsSource);
+
+        const positionLocation = gl.getAttribLocation(program, `vertPosition`);
+        const colorLocation = gl.getAttribLocation(program, `vertColor`);
+
+        gl.vertexAttribPointer(
+            positionLocation, // Attribute location
+            3, // Number of elements per attribute
+            gl.FLOAT, // Type of elements
+            gl.FALSE,
+            6 * Float32Array.BYTES_PER_ELEMENT, // Size of an individual vertex
+            0 // Offset from the beginning of a single vertex to this attribute
+        );
+        gl.vertexAttribPointer(
+            colorLocation, // Attribute location
+            3, // Number of elements per attribute
+            gl.FLOAT, // Type of elements
+            gl.FALSE,
+            6 * Float32Array.BYTES_PER_ELEMENT, // Size of an individual vertex
+            3 * Float32Array.BYTES_PER_ELEMENT // Offset from the beginning of a single vertex to this attribute
+        );
+
+        gl.enableVertexAttribArray(positionLocation);
+        gl.enableVertexAttribArray(colorLocation);
+
+        const projectionMatrix = mat4.create();
+
+        mat4.perspective(projectionMatrix, 60 * Math.PI / 180, canvas.width / canvas.height, 0.1, 100);
+
+        // Set the drawing position to the "identity" point, which is
+        // the center of the scene.
+        const modelViewMatrix = mat4.create();
+
+        // Now move the drawing position a bit to where we want to
+        // start drawing the square.
+
+        mat4.translate(modelViewMatrix, modelViewMatrix, [0.0, 0.0, -5.0]);
+        mat4.rotate(modelViewMatrix, modelViewMatrix, rotation, [0, 0, 1]);
+        mat4.rotate(modelViewMatrix, modelViewMatrix, rotation, [0, 1, 0]);
+        mat4.rotate(modelViewMatrix, modelViewMatrix, rotation, [1, 0, 0]);
+
+
+        const pMatrix = gl.getUniformLocation(program, `uProjectionMatrix`);
+        const mvMatrix = gl.getUniformLocation(program, `uModelViewMatrix`);
+
+        gl.uniformMatrix4fv(pMatrix, false, projectionMatrix);
+        gl.uniformMatrix4fv(mvMatrix, false, modelViewMatrix);
+
+        gl.drawElements(gl.TRIANGLES, boxIndices.length, gl.UNSIGNED_SHORT, 0);
+        //deleting the residues..
+        // gl.disableVertexAttribArray(positionLocation);
+        // gl.deleteBuffer(buffer);
+        // gl.deleteProgram(program);
+
+    }
+
+    //setting up canvas for the Drawing of elements
+    function setScene(gl) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
+    //initialing shader program 
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+        // attaching the shaders and linking 
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        //checking the link status of the program
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return;
+        }
+
+        gl.useProgram(shaderProgram);
+        gl.program = shaderProgram;
+
+        return shaderProgram;
+    }
+
+    //creating  and compiling shader
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        //checking the compile status
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader); //deleting the shader
+            return;
+        }
+        return shader;
+    }
+</script>
