@@ -1,0 +1,259 @@
+<!DOCTYPE <!DOCTYPE html>
+<html>
+
+<head>
+    
+    <title>WebGL</title>
+    <script src="./assets/OBJLoader.js"></script>
+    <script src="./assets/x3dom.js"></script>
+
+</head>
+
+<body onload = "main();">
+    <canvas id="canvas" width='640' height='480'>
+        Sorry! Your Browser doesn't support WebGL
+    </canvas>
+</body>
+
+</html>
+
+
+<script>
+    const vsSource = `
+        attribute vec4 position;
+        attribute vec4 color;
+        attribute vec4 normal;
+        
+        uniform mat4 u_MvpMatrix;
+        uniform mat4 u_ModelMatrix;    
+        uniform mat4 u_NormalMatrix;
+
+        varying vec3 v_Position;
+        varying vec4 v_Color;
+        varying vec3 v_Normal;
+        
+        void main() {
+            v_Position = vec3(u_ModelMatrix * position);
+            gl_Position = u_MvpMatrix * position;
+            v_Normal = normalize(vec3(u_NormalMatrix * normal));
+            v_Color = color; 
+        }
+    `;
+
+    const fsSource = `
+    precision mediump float;
+
+        varying vec3 v_Normal;
+        varying vec3 v_Position;
+        varying vec4 v_Color;
+
+
+        void main() {
+            vec3 color;
+            vec3 normal = normalize(v_Normal);
+            vec3 lightDirection = normalize(vec3(0.2, 1.2, 3.0) - v_Position);
+
+            float nDotL = max(dot(normal,lightDirection), 0.0);
+            float powNdotH = pow(nDotL, 128.0);
+
+            vec3 diffuse = vec3(0.7) * v_Color.rgb * nDotL;
+            vec3 specular = vec3(0.2) * powNdotH;
+            vec3 ambient = vec3(0.1) * v_Color.rgb;
+
+            color = ambient + diffuse + specular;
+            gl_FragColor = vec4(color, 1.0);
+        }
+    `;
+
+    function main() {
+        const canvas = document.querySelector('canvas');
+        const gl = canvas.getContext('webgl');
+        if (!gl) {
+            throw new Error('WebGL not supported');
+        }
+        if (!initShaderProgram(gl, vsSource, fsSource)) {
+            console.log('Failed to intialize shaders.');
+            return;
+        } else {
+            program = initShaderProgram(gl, vsSource, fsSource);
+        }
+
+        let loc = getLocation(gl, program);
+        let transform = initLoader(gl, loc);
+
+        let pMatrix = new VecMath.SFMatrix4f.identity(); //identity Matrix
+        pMatrix = VecMath.SFMatrix4f.perspective(60 * Math.PI / 180, canvas.width / canvas.height, 0.1, 1000);
+        pMatrix = VecMath.SFMatrix4f.lookAt(
+            new VecMath.SFVec3f(0.0, 0.0, 3.0),
+            new VecMath.SFVec3f(0.0, 0.0, 0.0),
+            new VecMath.SFVec3f(0.0, 1.0, 0.0));
+
+        let rotation = 0.0;
+        let then = 0;
+
+        let modelMatrix = new VecMath.SFMatrix4f.identity(); // modelmatrix
+        let mvpMatrix = new VecMath.SFMatrix4f.identity(); // mvpMatrix
+        let normalMatrix = new VecMath.SFMatrix4f.identity(); // normal matrix
+
+        loadObj(gl, `./assets/cube.obj`, transform, 60);
+
+        mvpMatrix = pMatrix.mult(modelMatrix);
+        gl.uniformMatrix4fv(loc.mvpMatrix, false, new Float32Array(mvpMatrix.toGL()));
+
+        normalMatrix = modelMatrix.inverse().transpose();
+
+        gl.uniformMatrix4fv(loc.normalMatrix, false, new Float32Array(normalMatrix.toGL()));
+        setScene(gl);
+
+        gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_BYTE, 0);
+    }
+
+    function loadObj(gl, fileName, transform, scale) {
+        let request = new XMLHttpRequest();
+        request.open('GET', fileName, true);
+        request.send();
+
+        request.onload = function () {
+            let objDoc = new OBJDoc(fileName);
+            if (!objDoc.parse(request.responseText, scale, true)) {
+                console.error("OBJ file parsing error: " + fileName);
+                return;
+            }
+            loadData(gl, objDoc, transform);
+
+        };
+    }
+
+    function loadData(gl, objDoc, transform) {
+        let info = objDoc.getDrawingInfo();
+        /*console.log('info from get drawing:', info);
+
+        console.log('before info.positions', info.positions);
+        console.log('before info.normals', info.normals);
+        console.log('before info.colors', info.colors);
+        console.log('before info.indices', info.indices);
+        console.log('before test: info.texCoords', info.texCoords);
+
+        console.log('before transform.vertexBuffer', transform.vertexBuffer);
+        console.log('before transform.normalBuffer', transform.normalBuffer);
+        console.log('before transform.colorBuffer', transform.colorBuffer);
+        console.log('before transform.indexBuffer', transform.indexBuffer);*/
+
+        // Write date into the buffer object
+        gl.bindBuffer(gl.ARRAY_BUFFER, transform.vertexBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(info.positions), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, transform.normalBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(info.normals), gl.STATIC_DRAW);
+
+        gl.bindBuffer(gl.ARRAY_BUFFER, transform.colorBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(info.colors), gl.STATIC_DRAW);
+
+        // Write the indices to the buffer object
+        gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, transform.indexBuffer);
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(info.indices), gl.STATIC_DRAW);
+/*
+        console.log('after info.positions', info.positions);
+        console.log('after info.normals', info.normals);
+        console.log('after info.colors', info.colors);
+        console.log('after info.indices', info.indices);
+        console.log('after test: info.texCoords', info.texCoords);*/
+    }
+
+    function setScene(gl) {
+        gl.enable(gl.DEPTH_TEST);
+        gl.depthFunc(gl.LEQUAL);
+        gl.clearColor(0.0, 0.0, 0.0, 1.0);
+        gl.clearDepth(1.0);
+        gl.viewport(0.0, 0.0, canvas.width, canvas.height);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    }
+
+    function initLoader(gl, loc) {
+        let obj = new Object();
+        //bind the buffer objects
+        obj.vertexBuffer = initVertexBuffer(gl, loc.positionLocation, 3);
+        obj.colorBuffer = initVertexBuffer(gl, loc.colorLocation, 4);
+        obj.normalBuffer = initVertexBuffer(gl, loc.normalLocation, 3);
+        obj.indexBuffer = gl.createBuffer();
+        if (!obj.vertexBuffer || !obj.normalBuffer || !obj.colorBuffer || !obj.indexBuffer) {
+            return null;
+        }
+        //gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        return obj;
+    }
+
+    function initVertexBuffer(gl, attribute, num) {
+        // Create a buffer object
+        let buffer = gl.createBuffer();
+        if (!buffer) {
+            console.log('Failed to create the vertex buffer object');
+            return false;
+        }
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.vertexAttribPointer(attribute, num, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(attribute);
+
+        return buffer;
+    }
+
+    function getLocation(gl, program) {
+        program.position = gl.getAttribLocation(program, 'position');
+        program.color = gl.getAttribLocation(program, 'color');
+        program.normal = gl.getAttribLocation(program, 'normal');
+        program.mvpMatrix = gl.getUniformLocation(program, 'u_MvpMatrix');
+        program.normalMatrix = gl.getUniformLocation(program, 'u_NormalMatrix');
+        program.modelMatrix = gl.getUniformLocation(program, 'u_ModelMatrix');
+
+
+        if (program.position < 0 || program.color < 0  || program.normal < 0 ||
+            !program.mvpMatrix || !program.normalMatrix || !program.modelMatrix) {
+            console.log('attribute, uniformm location');
+            return;
+        }
+
+        return {
+            program,
+            positionLocation: program.position,
+            colorLocation: program.color,
+            normalLocation: program.normal,
+            mvpMatrix: program.mvpMatrix,
+            normalMatrix: program.normalMatrix,
+            modelMatrix: program.mo
+        }
+    }
+
+    //initialing shader program 
+    function initShaderProgram(gl, vsSource, fsSource) {
+        const vertexShader = loadShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = loadShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        // Create the shader program
+        const shaderProgram = gl.createProgram();
+        // attaching the shaders and linking 
+        gl.attachShader(shaderProgram, vertexShader);
+        gl.attachShader(shaderProgram, fragmentShader);
+        gl.linkProgram(shaderProgram);
+        //checking the link status of the program
+        if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) {
+            alert('Unable to initialize the shader program: ' + gl.getProgramInfoLog(shaderProgram));
+            return;
+        }
+        gl.useProgram(shaderProgram);
+        gl.program = shaderProgram;
+        return shaderProgram;
+    }
+
+    //creating  and compiling shader
+    function loadShader(gl, type, source) {
+        const shader = gl.createShader(type);
+        gl.shaderSource(shader, source);
+        gl.compileShader(shader);
+        //checking the compile status
+        if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+            alert('An error occurred compiling the shaders: ' + gl.getShaderInfoLog(shader));
+            gl.deleteShader(shader); //deleting the shader
+            return;
+        }
+        return shader;
+    }
+</script>
