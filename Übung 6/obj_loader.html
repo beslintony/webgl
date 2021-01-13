@@ -2,10 +2,11 @@
 <html>
 
 <head>
-    
     <title>WebGL</title>
     <script src="./assets/OBJLoader.js"></script>
     <script src="./assets/x3dom.js"></script>
+
+
 
 </head>
 
@@ -20,51 +21,35 @@
 
 <script>
     const vsSource = `
-        attribute vec4 position;
-        attribute vec4 color;
-        attribute vec4 normal;
-        
-        uniform mat4 u_MvpMatrix;
-        uniform mat4 u_ModelMatrix;    
-        uniform mat4 u_NormalMatrix;
-
-        varying vec3 v_Position;
-        varying vec4 v_Color;
-        varying vec3 v_Normal;
-        
-        void main() {
-            v_Position = vec3(u_ModelMatrix * position);
-            gl_Position = u_MvpMatrix * position;
-            v_Normal = normalize(vec3(u_NormalMatrix * normal));
-            v_Color = color; 
-        }
-    `;
+    attribute vec4 position;
+    attribute vec4 color;
+    attribute vec4 normal;
+    attribute vec2 a_Texcoord;
+    uniform mat4 u_MvpMatrix;
+    uniform mat4 u_NormalMatrix;
+    varying vec4 v_Color;
+    varying vec2 v_Texcoord;
+    void main() {
+      vec3 lightDirection = vec3(1, -1, -0.9);
+      gl_Position = u_MvpMatrix * position;
+      vec3 normal1 = normalize(vec3(u_NormalMatrix * normal));
+      float nDotL = max(dot(normal1, lightDirection), 0.0);
+      v_Color = vec4(color.rgb * nDotL, color.a);
+    }
+`;
 
     const fsSource = `
     precision mediump float;
+    
+    uniform sampler2D u_Texture;
+    varying vec4 v_Color;
+    varying vec2 v_Texcoord;
 
-        varying vec3 v_Normal;
-        varying vec3 v_Position;
-        varying vec4 v_Color;
-
-
-        void main() {
-            vec3 color;
-            vec3 normal = normalize(v_Normal);
-            vec3 lightDirection = normalize(vec3(0.2, 1.2, 3.0) - v_Position);
-
-            float nDotL = max(dot(normal,lightDirection), 0.0);
-            float powNdotH = pow(nDotL, 128.0);
-
-            vec3 diffuse = vec3(0.7) * v_Color.rgb * nDotL;
-            vec3 specular = vec3(0.2) * powNdotH;
-            vec3 ambient = vec3(0.1) * v_Color.rgb;
-
-            color = ambient + diffuse + specular;
-            gl_FragColor = vec4(color, 1.0);
-        }
-    `;
-
+    void main() {
+        gl_FragColor = v_Color;
+    }
+`;
+    var gobj =null;
     function main() {
         const canvas = document.querySelector('canvas');
         const gl = canvas.getContext('webgl');
@@ -82,62 +67,37 @@
         let transform = initLoader(gl, loc);
 
         let pMatrix = new VecMath.SFMatrix4f.identity(); //identity Matrix
-        pMatrix = VecMath.SFMatrix4f.perspective(60 * Math.PI / 180, canvas.width / canvas.height, 0.1, 1000);
-        pMatrix = VecMath.SFMatrix4f.lookAt(
-            new VecMath.SFVec3f(0.0, 0.0, 3.0),
-            new VecMath.SFVec3f(0.0, 0.0, 0.0),
-            new VecMath.SFVec3f(0.0, 1.0, 0.0));
-
-        let rotation = 0.0;
-        let then = 0;
+        pMatrix = VecMath.SFMatrix4f.perspective(120*Math.PI /180, canvas.width / canvas.height, 0.1, 1000);
 
         let modelMatrix = new VecMath.SFMatrix4f.identity(); // modelmatrix
         let mvpMatrix = new VecMath.SFMatrix4f.identity(); // mvpMatrix
         let normalMatrix = new VecMath.SFMatrix4f.identity(); // normal matrix
 
-        loadObj(gl, `./assets/cube.obj`, transform, 60);
+        let matrices = {modelMatrix,mvpMatrix,pMatrix,normalMatrix};
 
-        mvpMatrix = pMatrix.mult(modelMatrix);
-        gl.uniformMatrix4fv(loc.mvpMatrix, false, new Float32Array(mvpMatrix.toGL()));
+        loadObj(gl, `./assets/cube.obj`, transform, 60, matrices, loc);
 
-        normalMatrix = modelMatrix.inverse().transpose();
-
-        gl.uniformMatrix4fv(loc.normalMatrix, false, new Float32Array(normalMatrix.toGL()));
-        setScene(gl);
-
-        gl.drawElements(gl.TRIANGLES, 36, gl.UNSIGNED_BYTE, 0);
     }
 
-    function loadObj(gl, fileName, transform, scale) {
+    function loadObj(gl, fileName, transform, scale, matrices, loc) {
         let request = new XMLHttpRequest();
         request.open('GET', fileName, true);
         request.send();
 
-        request.onload = function () {
-            let objDoc = new OBJDoc(fileName);
+        request.onload  = function () {
+           let objDoc = new OBJDoc(fileName);
+
             if (!objDoc.parse(request.responseText, scale, true)) {
                 console.error("OBJ file parsing error: " + fileName);
                 return;
             }
-            loadData(gl, objDoc, transform);
-
+            loadData(gl, objDoc, transform, matrices, loc);
         };
+
     }
 
-    function loadData(gl, objDoc, transform) {
+    function loadData(gl, objDoc, transform, matrices,loc) {
         let info = objDoc.getDrawingInfo();
-        /*console.log('info from get drawing:', info);
-
-        console.log('before info.positions', info.positions);
-        console.log('before info.normals', info.normals);
-        console.log('before info.colors', info.colors);
-        console.log('before info.indices', info.indices);
-        console.log('before test: info.texCoords', info.texCoords);
-
-        console.log('before transform.vertexBuffer', transform.vertexBuffer);
-        console.log('before transform.normalBuffer', transform.normalBuffer);
-        console.log('before transform.colorBuffer', transform.colorBuffer);
-        console.log('before transform.indexBuffer', transform.indexBuffer);*/
 
         // Write date into the buffer object
         gl.bindBuffer(gl.ARRAY_BUFFER, transform.vertexBuffer);
@@ -149,15 +109,42 @@
         gl.bindBuffer(gl.ARRAY_BUFFER, transform.colorBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(info.colors), gl.STATIC_DRAW);
 
+        //gl.getParameter(gl.ARRAY_BUFFER_BINDING);
+        //gl.getParameter(gl.ELEMENT_ARRAY_BUFFER_BINDING);
+
         // Write the indices to the buffer object
         gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, transform.indexBuffer);
         gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(info.indices), gl.STATIC_DRAW);
-/*
-        console.log('after info.positions', info.positions);
-        console.log('after info.normals', info.normals);
-        console.log('after info.colors', info.colors);
-        console.log('after info.indices', info.indices);
-        console.log('after test: info.texCoords', info.texCoords);*/
+
+        draw(gl, matrices, loc, info);
+    }
+
+
+    function draw(gl,matrices,loc,info){
+        let rotation = 0.0;
+        let then = 0;
+    
+        function render(now) {
+            now *= 0.001;
+            let deltaTime = now - then;
+            then = now;
+            matrices.modelMatrix.setRotate(VecMath.Quaternion.axisAngle(new VecMath.SFVec3f(0,0,-1), rotation));
+
+            matrices.normalMatrix = matrices.modelMatrix.inverse().transpose();
+
+            gl.uniformMatrix4fv(loc.normalMatrix, false, new Float32Array(matrices.normalMatrix.toGL()));
+            
+            matrices.mvpMatrix = matrices.pMatrix.mult(matrices.modelMatrix);
+            gl.uniformMatrix4fv(loc.mvpMatrix, false, new Float32Array(matrices.mvpMatrix.toGL()));
+            
+            setScene(gl);
+
+            gl.drawElements(gl.TRIANGLES, info.indices.length, gl.UNSIGNED_BYTE, 0);
+
+            rotation += deltaTime;
+            requestAnimationFrame(render); //reqeust animation frame
+        };
+        render(0);
     }
 
     function setScene(gl) {
@@ -203,11 +190,9 @@
         program.normal = gl.getAttribLocation(program, 'normal');
         program.mvpMatrix = gl.getUniformLocation(program, 'u_MvpMatrix');
         program.normalMatrix = gl.getUniformLocation(program, 'u_NormalMatrix');
-        program.modelMatrix = gl.getUniformLocation(program, 'u_ModelMatrix');
-
 
         if (program.position < 0 || program.color < 0  || program.normal < 0 ||
-            !program.mvpMatrix || !program.normalMatrix || !program.modelMatrix) {
+            !program.mvpMatrix || !program.normalMatrix) {
             console.log('attribute, uniformm location');
             return;
         }
@@ -219,7 +204,6 @@
             normalLocation: program.normal,
             mvpMatrix: program.mvpMatrix,
             normalMatrix: program.normalMatrix,
-            modelMatrix: program.mo
         }
     }
 
