@@ -2,7 +2,7 @@ var vsShadowMap =`
   attribute vec4 position;
   uniform mat4 u_MvpMatrix;
 
-  void main(void) {
+  void main() {
     gl_Position = u_MvpMatrix * position;;
   }
 `;
@@ -10,7 +10,7 @@ var vsShadowMap =`
 var fsShadowMap =`
   precision mediump float;
 
-  void main(void) {
+  void main() {
     gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 0.0);
   }
 `;
@@ -51,7 +51,7 @@ void main() {
 
   vec3 shadowCoord = (v_PositionFromLight.xyz/v_PositionFromLight.w)/2.0 + 0.5;
   vec4 rgbaDepth = texture2D(u_ShadowMap, shadowCoord.xy);
-  float depth = rgbaDepth.r; // Retrieve the z-value from R
+  float depth = rgbaDepth.r;
   float visibility = (shadowCoord.z > depth + 0.005) ? 0.7 : 1.0;
   gl_FragColor = vec4(v_Color.rgb * visibility, v_Color.a);
 }
@@ -78,7 +78,7 @@ function App() {
   
   this.fbo = this.initfbo();
   
-  this.lightdir = [0.0, 7.8, -1.9]; //[0.58,0.58,-0.58];
+  this.lightdir = [0.0, 7.8, -1.9]; 
   
   this.ui = {    
     dragging: false,
@@ -155,8 +155,6 @@ App.prototype.initfbo = function () {
   renderTex = wgl.renderTexture(gl, this.width, this.height);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, renderTex.rttTexture);
-  
-  // Set the clear color and enable the depth test
   gl.clearColor(0, 0, 0, 1);
   gl.enable(gl.DEPTH_TEST);
 
@@ -205,17 +203,14 @@ App.prototype.fboRender = function(){
   gl.viewport(0.0, 0.0, this.width,this.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  gl.useProgram(this.shadowProgram); // Set shaders for generating a shadow map
-
-  //this.drawCube();
-  //this.drawFloor();  
+  gl.useProgram(this.shadowProgram);
   
   //positions attributes
   gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeBuffers.positions);
   gl.vertexAttribPointer(this.locations.positionShadow, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.positionShadow);
   
-  //textcoords attribute
+  //color attribute
   gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeBuffers.colors);
   gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.color);
@@ -231,14 +226,13 @@ App.prototype.fboRender = function(){
   gl.uniformMatrix4fv(this.locations.mvpShadowMatrix, false, this.transforms.mvpLightMatrix);
   
   gl.drawElements(gl.TRIANGLES, this.cubeData.indices.length, gl.UNSIGNED_SHORT, 0);
-  
 
   //positions attributes
   gl.bindBuffer(gl.ARRAY_BUFFER, this.floorBuffers.positions);
   gl.vertexAttribPointer(this.locations.positionShadow, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.positionShadow);
   
-  //textcoords attribute
+  //color attribute
   gl.bindBuffer(gl.ARRAY_BUFFER, this.floorBuffers.colors);
   gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.color);
@@ -252,24 +246,8 @@ App.prototype.fboRender = function(){
 
   gl.drawElements(gl.TRIANGLES, this.floorData.indices.length, gl.UNSIGNED_SHORT, 0);
   gl.disableVertexAttribArray(this.locations.positionShadow);
-  
-  /*
-  //DRAW THE cube
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeBuffers.positions);
-  gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0) ;
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.cubeBuffers.indices);
-  gl.drawElements(gl.TRIANGLES, this.cubeData.indices.length, gl.UNSIGNED_SHORT, 0);
 
-  //DRAW THE FLOOR
-  gl.bindBuffer(gl.ARRAY_BUFFER, this.floorBuffers.positions);
-  gl.vertexAttribPointer(this.locations.positionShadow, 3, gl.FLOAT, false, 0, 0) ;
-
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.floorBuffers.indices);
-  gl.drawElements(gl.TRIANGLES, this.floorData.indices.length, gl.UNSIGNED_SHORT, 0);
-  gl.disableVertexAttribArray(this.locations.positionShadow);
-*/
-
-  gl.bindFramebuffer(gl.FRAMEBUFFER, null);               // Change the drawing destination to color buffer
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);   
   gl.viewport(0, 0, this.canvas.width, this.canvas.height);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);    // Clear color and depth buffer
 
@@ -330,11 +308,8 @@ App.prototype.updateUniforms = function () {
   gl.uniformMatrix4fv(this.locations.mvpMatrix, false, this.transforms.mvpMatrix);
   gl.uniformMatrix4fv(this.locations.normalMatrix, false, this.transforms.normalMatrix);
   gl.uniformMatrix4fv(this.locations.lightMatrix, false, this.transforms.mvpLightMatrix);
-  //sampler for texture
-  gl.uniform1i(this.locations.shadowMap, 0);//NOTE with the new source
-  //gl.uniform1i(this.locations.shadowSampler, 1);//NOTE with the new source
-  //lightdirection update
-  //gl.uniform3fv(this.locations.lightDirection, this.lightdir);
+  //sampler for shadow texture map
+  gl.uniform1i(this.locations.shadowMap, 0);
 };
 
 App.prototype.updateCubeAttributes = function () {
@@ -346,7 +321,7 @@ App.prototype.updateCubeAttributes = function () {
   gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.position);
   
-  //textcoords attribute
+  //color attribute
   gl.bindBuffer(gl.ARRAY_BUFFER, this.cubeBuffers.colors);
   gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.color);
@@ -370,7 +345,7 @@ App.prototype.updateFloorAttributes = function () {
   gl.vertexAttribPointer(this.locations.position, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.position);
   
-  //textcoords attribute
+  //color attribute
   gl.bindBuffer(gl.ARRAY_BUFFER, this.floorBuffers.colors);
   gl.vertexAttribPointer(this.locations.color, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(this.locations.color);
@@ -383,8 +358,6 @@ App.prototype.updateFloorAttributes = function () {
   //indices array
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.floorBuffers.indices);
   
-  //sampler for texture
-  //gl.uniform1i(this.locations.sampler, 0);//NOTE with the new source
   
 };
 App.prototype.disableAttribArrays = function(){
